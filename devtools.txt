@@ -1,0 +1,445 @@
+```
+# Ceci est un commentaire
+
+GET /
+
+# "minimum_wire_compatibility_version": "8.19.0", # peut cohabiter avec
+# "minimum_index_compatibility_version": "8.0.0"  peut lire les données insérées en 8.0.0
+
+# Liste des index
+GET _cat/indices
+# Liste les machines
+GET _cat/nodes?v
+# Liste les machines
+GET _cat/nodes?v&h=ip,cpu,name
+# Santé du cluster
+GET /_cluster/health
+
+# Création d'index (défaut 1 shard / 1 réplica)
+PUT voitures
+# Santé du cluster
+GET /_cluster/health
+GET _cat/shards?v
+
+#    # / { } [ ] * = - _ ! ? & @ 
+
+POST users/_doc
+{
+    "name" : "alice",
+    "age" : 25
+}
+
+PUT users/_doc/12345
+{
+    "name" : "max",
+    "age": 21
+}
+
+GET users
+GET users/_count
+GET users/_search
+GET users/_source/12345
+
+POST users/_update/12345
+{
+    "doc": {
+        "age" : 22
+    }
+}
+
+POST users/_update/12345
+{
+  "script": {
+    "source": """
+        if(ctx._source.age < 25)
+            ctx._source.age += 1;
+        """,
+    "lang": "painless"
+  }
+}
+
+DELETE users
+
+# exemple bulk
+POST _bulk
+{"index":{"_index" : "users"}}
+{"name" : "alice"}
+{"index":{"_index" : "animaux"}}
+{"type" : "chien"}
+
+
+POST bank/_update_by_query
+{
+    "query": {
+        "match_all":{}
+    },
+    "script": {
+      "source": "ctx._source.balance += 100",
+      "lang": "painless"
+    }
+}
+
+GET bank/_search?q=firstname:rose
+
+# Term VS match
+GET bank/_search
+{
+    "query": {
+        "term": {
+          "firstname": {
+            "value": "rose"
+          }
+        }
+    }
+}
+
+# analyze ???
+# input("Hello ElasticSearch ! :)")
+# output [hello, elasticsearch]
+GET _analyze?filter_path=**.token
+{
+    "text" : "Hello ElasticSearch ! :)"
+}
+
+# JSON(_source, display only): 987 Navy Street
+# address (text, analysé) [987, navy, street]
+# address.keyword (keyword, non analysé) "987 Navy Street"
+GET bank/_search
+{
+    "query": {
+        "term": {
+          "address": {
+            "value": "street"
+          }
+        }
+    }
+}
+
+# JSON TX
+# state [tx]
+# state.keyword "TX"
+GET bank/_search
+{
+    "query": {
+        "term": {
+          "state.keyword": {
+            "value": "TX"
+          }
+        }
+    }
+}
+
+# match analyse avant de comparer
+# JSON "firstname" : "Rose"
+# firstname [rose]
+# firstname.keyword : "Rose"
+GET bank/_search
+{
+    "query": {
+        "match": {
+          "firstname": "J'adore la couleur ROSe"
+        }
+    }
+}
+# "J'adore la couleur rose" -> [j, adore, la, couleur, rose]
+
+POST factures/_bulk
+{"index":{}}
+{"code" :"FACT-1234-CLIENT-A"}
+{"index":{}}
+{"code" :"FACT-1234-CLIENT-B"}
+{"index":{}}
+{"code" :"FACT-1234-CLIENT-C"}
+{"index":{}}
+{"code" :"FACT-4321-CLIENT-A"}
+
+# JSON: "code":"FACT-1234-CLIENT-A"
+# code (text) : [fact, 1234, client, a]
+# code.keyword: "FACT-1234-CLIENT-A"
+
+GET factures/_search
+{
+    "query": {
+        "match": {
+          "code": "CLIENT-----,,,,,,-----A"
+        }
+    }
+}
+
+GET factures/_search
+{
+    "query": {
+        "wildcard": {
+          "code.keyword": {
+            "value": "*-CLIENT-A"
+          }
+        }
+    }
+}
+
+GET factures/_search
+{
+    "query": {
+        "term": {
+          "code.keyword": {
+            "value": "FACT-1234-CLIENT-A"
+          }
+        }
+    }
+}
+
+GET factures/_search
+{
+    "query": {
+        "prefix": {
+          "code.keyword": {
+            "value": "FACT-1234"
+          }
+        }
+    }
+}
+
+GET factures/_search
+{
+    "query": {
+        "match": {
+          "code": "Mon client sait compter 4321"
+        }
+    }
+}
+
+GET factures/_search
+{
+    "query": {
+        "match": {
+          "code": "J'adore aller a la plage"
+        }
+    }
+}
+
+
+GET factures/_search
+{
+    "query": {
+        "term": {
+          "code": {
+            "value": "FACT"
+          }
+        }
+    }
+}
+
+
+GET _analyze?filter_path=**.token&format=yaml
+{
+    "text":"J'adore les légumes, mais je préfère les pizzas"
+}
+
+GET _analyze?filter_path=**.token&format=yaml
+{
+    "text":"J'adore les légumes, mais je préfère les pizzas",
+    "analyzer" : "french"
+}
+
+
+# types
+# text => phrases, paragraphes, ponctuation
+# keyword => codes (verbe http, chemins,, etc. )
+
+# text = searchable
+# keyword = searchable, sortable, aggregatable
+
+# 1.2.3.4 [date] GET /hello.php 200
+
+
+
+# mappings
+GET bank
+
+GET pizzas
+
+POST pizzas/_doc
+{
+    "name" : "Chorizo",
+    "price" : 12
+}
+
+POST pizzas/_doc
+{
+    "name" : "Reine",
+    "price" : 12.9
+}
+
+GET pizzas/_search
+
+GET pizzas/_search
+{
+    "query": {
+       "range": {
+         "price": {           
+           "lte": 12
+         }
+       }
+    }
+}
+
+PUT pizzasv2
+{
+    "mappings": {
+        "properties": {
+            "name" : {
+                "type" : "keyword"
+            },
+            "price" : {
+                "type" : "float"
+            }
+        }
+    }
+}
+
+# recopie pizzas vers pizzasv2
+POST _reindex
+{
+    "source": {
+        "index" : "pizzas"
+    },
+    "dest": {
+        "index" : "pizzasv2"
+    }
+}
+
+GET pizzasv2/_search
+{
+  "query": {
+    "range": {
+      "price": {
+        "lte": 12
+      }
+    }
+  }
+}
+
+GET pizzasv2/_search?sort=name:desc
+
+## dates
+POST recettes/_doc
+{
+    "title" : "mousse au chocolat",
+    "created_at" : "2025-11-12T13:47:00"
+}
+
+GET recettes/_search
+{
+    "query": {
+        "range": {
+          "created_at": {
+            "gte": "now-7d/d"
+          }
+        }
+    }
+}
+
+GET recettes/_mapping
+
+# type ip
+PUT mes-logs
+{
+    "mappings": {
+        "properties": {
+            "mon-ip" : {
+                "type" : "ip"
+            }
+        }
+    }
+}
+
+POST mes-logs/_doc
+{
+    "mon-ip" : "192.168.1.100"
+}
+
+GET mes-logs/_search
+{
+    "query": {
+        "term": {
+          "mon-ip": {
+            "value": "0.0.0.0/0"
+          }
+        }
+    }
+}
+
+# chasse au dynamic mapping
+GET */_mapping
+
+
+
+# espace disque ???
+
+PUT pages-web
+{
+    "mappings": {
+        "properties": {
+            "title" : {
+                "type" : "text"
+            }
+        }
+    }
+}
+
+
+POST pages-web/_doc
+{
+    "title" : "ElasticSearch is super cool"
+}
+
+PUT pages-web-v2
+{
+    "mappings": {
+        "properties": {
+            "title" : {
+                "type" : "completion"
+            }
+        }
+    }
+}
+
+POST pages-web-v2/_doc
+{
+    "title" : "ElasticSearch is super cool"
+}
+
+GET _cat/indices/pages-web*?v
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
