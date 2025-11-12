@@ -426,6 +426,361 @@ GET _cat/indices/pages-web*?v
 
 
 
+# Analyse de l'existant
+GET bank
+
+# Prépartion index optimisé
+PUT bank2
+{
+    "mappings": {
+        "properties": {
+            "account_number" : {
+                "type" : "unsigned_long"
+            },
+            "address" : {
+                "type" : "text"
+            },
+            "age" : {
+                "type" : "unsigned_long"
+            },
+            "balance" : {
+                "type" : "float"
+            },
+            "city" : {
+                "type" : "keyword"
+            },
+            "email" : {
+                "type" : "text"
+            },
+            "employer" : {
+                "type" : "keyword"
+            },
+            "firstname" : {
+                "type" : "keyword"
+            },
+            "lastname" : {
+                "type" : "keyword"
+            },
+            "gender" : {
+                "type" : "keyword"
+            },
+            "state" : {
+                "type" : "keyword"
+            }
+        }
+    }
+}
+
+# Réindexation bank -> bank2
+POST _reindex
+{
+    "source": {
+        "index" : "bank"
+    },
+    "dest": {
+        "index" : "bank2"
+    }
+}
+
+# analyse espace disk
+GET _cat/indices/bank*?v
+
+
+# Comptes ayant "street" dans le champ adresse (match ou term)
+# Comptes ayant plus de 25 ans (range)
+# Comptes ayant entre 25 ans et 35 ans (range)
+GET bank2/_search
+{
+    "query": {
+        "term": {
+          "address": {
+            "value": "street"
+          }
+        }
+    }
+}
+
+GET bank2/_search
+{
+  "query": {
+    "match": {
+      "address": "strEeT coucou le monde"
+    }
+  }
+}
+
+GET bank2/_search
+{
+    "query": {
+        "range": {
+          "age": {
+            "gte": 25,
+            "lte": 35
+          }
+        }
+    }
+}
+
+# Compte dont le prénom est "Rose" à quelques fautes près (fuzzy)
+# Compte dont le prénom commence par "R" (prefix)
+# Compte dont le prénom contient un "E" (wildcard + regex)
+
+GET bank2/_search
+{
+    "query": {
+        "fuzzy": {
+          "employer": {
+            "value" : "Aquasure"
+          }
+        }
+    }
+}
+
+GET bank2/_search
+{
+    "query": {
+        "prefix": {
+          "firstname": {
+            "value": "r",
+            "case_insensitive" : true
+          }
+        }
+    }
+}
+
+GET bank2/_search
+{
+    "query": {
+        "wildcard": {
+          "firstname": {
+            "value": "*E*",
+            "case_insensitive" : true
+          }
+        }
+    }
+}
+
+GET bank2/_search
+{
+    "query": {
+        "regexp": {
+          "firstname": ".*(e|E).*"
+        }
+    }
+}
+
+
+# Multi indexation
+PUT blog
+{
+    "mappings": {
+        "properties": {
+            "title" : {
+                "type" : "text",
+                "fields": {
+                    "en_tant_que_keyword" : {
+                        "type" : "keyword"
+                    },
+                    "en_anglais" : {
+                        "type" : "text",
+                        "analyzer" : "english"
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+GET bank/_search
+{
+    "query": {
+        "wildcard": {
+          "firstname.keyword": {
+            "value": "*e*"
+          }
+        }
+    }
+}
+
+
+
+
+GET _analyze?filter_path=**.token&format=yaml
+{
+    "text" : "nom-prenom@mon-domain.fr"
+}
+
+
+# bool queries
+POST web/_doc
+{
+    "title" : "Java is a cool language",
+    "category" : "dev",
+    "ads" : false
+}
+
+POST web/_doc
+{
+    "title" : "Venez découvrir l'ile magnifique de Java",
+    "category" : "voyage",
+    "ads" : true
+}
+
+POST web/_doc
+{
+    "title" : "Il fait un peu trop la Java ce soir là, la suite risque de vous étonner",
+    "category" : "dumb",
+    "ads" : true
+}
+
+GET web/_search
+{
+    "query": {
+        "match": {
+          "title": "Java"
+        }
+    }
+}
+
+GET web/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "title": "Java"
+          }
+        }
+      ],
+      "should": [
+        {
+            "term": {
+              "category": {
+                "value": "voyage",
+                "boost": 10
+              }
+            }
+        },
+        {
+            "term": {
+              "category": {
+                "value": "dev",
+                "boost": 1
+              }
+            }
+        },
+        {
+            "term": {
+              "ads": {
+                "value": true,
+                "boost": 2
+              }
+            }
+        }
+      ],
+      "filter": [
+        {
+            "term": {
+              "category": "dev"
+            }
+        }
+      ]
+    }
+  }
+}
+
+#  Rechercher les comptes dont l'age est inférieur à 25 ans et le compte en banque supérieur à 25000.
+# Bonus : booster le score des comptes dont le genre est féminin.
+GET bank2/_search
+{
+    "query": {
+        "bool": {
+            "must": [
+              {
+                "range": {
+                  "age": {
+                    "gte": 25
+                  }
+                }
+              },
+              {
+                "range": {
+                  "balance": {
+                    "gte": 25000
+                  }
+                }
+              }
+            ],
+            "should": [
+              {
+                "term": {
+                  "gender": {
+                    "value": "F"
+                  }
+                }
+              }
+            ]
+        }
+    }
+}
+
+
+
+
+
+
+
+# script query
+
+GET bank2/_search
+{
+    "query": {
+        "script": {
+          "script": """
+            if(doc['balance'].value > 25000 && doc['age'].value < 22) 
+              return true;
+            return false;
+            """
+        }       
+    }
+}
+
+GET bank2/_search?q=firstname:Rose
+
+GET bank2/_search
+{
+  "query": {
+    "more_like_this": {
+      "fields": [
+        "address"
+      ],
+      "like": [
+        {
+          "_index": "bank2",
+          "_id": "759"
+        }
+      ],
+      "min_term_freq": 1,
+      "max_query_terms": 12
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
