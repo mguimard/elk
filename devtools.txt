@@ -775,6 +775,430 @@ GET bank2/_search
 
 
 
+# Analyzers
+
+# <p>"Creme fraiche 40%"</p>
+# Creme fraiche 40%
+# Creme fraiche 40 %
+# Creme-fraiche 40%
+# Creme-fraiche 40 %
+# ....
+# -> [crem, frai, 40, lait]
+
+# recherche "creme vanille"
+# > [crem, vanil, lait]
+
+# Pipelines
+
+# CSV
+PUT _ingest/pipeline/parse-voiture
+{
+    "description" : "Cette pipeline découpe le champ message (csv)",
+    "processors": [
+      {
+        "csv": {
+          "field": "message",
+          "separator": ";",
+          "target_fields": [
+            "marque", "modele", "puissance"
+          ]
+        }
+      },
+      {
+        "convert": {
+          "field": "puissance",
+          "type": "integer"
+        }
+      }
+    ]
+}
+
+POST voitures/_doc?pipeline=parse-voiture
+{
+    "message" : "Renault;Clio;60" 
+}
+
+GET voitures/_source/PapYfJoBHtp8RquLpqAu
+
+PUT _ingest/pipeline/get-location
+{
+    "description": "cette pipeline récupere la géoloc pour le champ 'my-ip'",
+    "processors": [
+      {
+        "geoip": {
+          "field": "my-ip"
+        }
+      }
+    ]
+}
+
+POST mes-logs/_doc?pipeline=get-location
+{
+    "my-ip" : "176.141.15.153"
+}
+
+GET mes-logs/_source/P6pcfJoBHtp8RquLtqAS
+
+
+POST mes-logs/_doc
+{
+  "message" : "1.2.3.4 GET /index.html 200 123456"
+}
+
+# %{IP:my-ip}%{SPACE}%{WORD:my-verb}%{SPACE}%{URIPATH:my-request}%{SPACE}%{INT:my-status-code}%{SPACE}%{INT:my-bytes}
+
+# ^\[%{TIMESTAMP_ISO8601:date}\]%{SPACE}\[%{LOGLEVEL:log-level}\]%{SPACE}?%{GREEDYDATA:log-message}
+
+
+# grok
+
+PUT _ingest/pipeline/parsing-logs
+{
+  "description": "blabla parsing regex",
+  "processors": [
+    {
+      "grok": {
+        "field": "message",
+        "patterns": [
+          "%{IP:my-ip}%{SPACE}%{WORD:my-verb}%{SPACE}%{URIPATH:my-request}%{SPACE}%{INT:my-status-code}%{SPACE}%{INT:my-bytes}",
+          "%{IP:my-ip}%{SPACE}%{WORD:my-verb}%{SPACE}%{URIPATH:my-request}%{SPACE}%{INT:my-status-code}%{SPACE}",
+          "%{IP:my-ip}"
+        ]
+      }
+    }
+  ]
+}
+
+
+
+# script
+PUT _ingest/pipeline/ajoute-a-b
+{
+  "description" : "ajoute a + b dans c",
+  "processors": [
+    {
+      "script": {
+        "source": """         
+            // sanity checks before !!!!! 
+            ctx['c'] = ctx['a'] + ctx['b'];
+          """
+      }
+    }
+  ]
+}
+
+POST my-numbers/_doc?pipeline=ajoute-a-b
+{
+  "a" : 10,
+  "b" : 22
+}
+
+GET my-numbers/_source/QapxfJoBHtp8RquLV6Bm
+
+
+
+# api de simulation
+POST _ingest/pipeline/_simulate
+{
+  "docs": [
+    {
+      "_source": {
+        "a": 123,
+        "b": 456
+      }
+    },
+    {
+      "_source": {
+        "a": 123,
+        "b": 456
+      }
+    },
+    {
+      "_source": {
+        "a": 123,
+        "b": 456
+      }
+    }
+  ],
+  "pipeline": {
+    "processors": [
+      {
+        "script": {
+          "source": """         
+            // sanity checks before !!!!! 
+            ctx['c'] = ctx['a'] + ctx['b'];
+          """
+        }
+      }
+    ]
+  }
+}
+
+
+
+
+
+# TP3
+
+PUT sncf
+{
+  "mappings": {
+    "properties": {
+      "date_controle": {
+        "type": "date"
+      },
+      "gare": {
+        "type": "completion",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "code_uic": {
+        "type": "keyword"
+      },
+      "problemes": {
+        "type": "integer"
+      },
+      "observations": {
+        "type": "integer"
+      }
+    }
+  }
+}
+
+
+
+
+PUT sncf/_mapping
+{
+  "runtime": {
+      "taux_conformite": {
+        "type": "double",
+        "script": {
+          "source": """
+          if( doc['observations'].size()!=0 && doc['problemes'].size() != 0 && doc['observations'].value > 0 && doc['problemes'].value > 0)
+            emit((1.0 - 1.0 * doc['problemes'].value / doc['observations'].value) * 100.0);
+          else
+            emit(0);
+          """
+        }
+      },
+      "hour_of_day": {
+        "type": "double",
+        "script": {
+          "source": """
+          if(doc['date_controle'].size()!=0 )
+            emit(doc['date_controle'].value.getHour());
+          else
+            emit(0);
+          """
+        }
+      },
+      "day_of_week": {
+        "type": "keyword",
+        "script": {
+          "source": """
+          if(doc['date_controle'].size() == 0)
+            emit('NA');
+          else
+          emit(doc['date_controle'].value.dayOfWeekEnum.getDisplayName(TextStyle.FULL, Locale.ROOT));
+          """
+        }
+      }
+    }
+}
+
+# Vérification des données
+GET sncf/_count
+GET sncf/_search
+
+GET sncf/_search
+{
+  "aggs": {
+    "avg_taux_conf": {
+      "avg": {
+        "field": "taux_conformite"
+      }
+    }
+  }
+}
+
+# Nettoyage (optionel)
+# trouver les entrées vide
+GET sncf/_search
+{
+  "query": {
+    "bool": {
+      "must_not": [
+        {
+          "exists": {
+            "field" : "date_controle"
+          }
+        }
+      ]
+    }
+  }
+}
+
+GET sncf/_search
+{
+  "query": {
+    "bool": {
+      "must_not": [
+        {
+          "exists": {
+            "field" : "problemes"
+          }
+        }
+      ]
+    }
+  }
+}
+
+# delete
+POST sncf/_delete_by_query
+{
+  "query": {
+    "bool": {
+      "must_not": [
+        {
+          "exists": {
+            "field": "date_controle"
+          }
+        }
+      ]
+    }
+  }
+}
+
+POST sncf/_delete_by_query
+{
+  "query": {
+    "bool": {
+      "must_not": [
+        {
+          "exists": {
+            "field": "problemes"
+          }
+        }
+      ]
+    }
+  }
+}
+
+GET sncf/_count
+
+# données problématiques ?.
+GET sncf/_search
+{
+  "query": {
+    "script": {
+      "script": "doc['problemes'].value >= doc['observations'].value"
+    }
+  }
+}
+
+
+POST sncf/_update_by_query
+{
+  "script": {
+    "source": "ctx._source.departement = '75'",
+    "lang": "painless"
+  }
+}
+
+GET sncf/_search
+
+# agregations
+
+
+GET sncf/_search
+{
+  "size": 0,
+  "aggs": {
+    "somme_problemes": {
+      "sum": {
+        "field": "problemes"
+      }
+    }
+  }
+}
+
+GET sncf/_search
+{
+  "size": 0,
+  "aggs": {
+    "somme_observations": {
+      "sum": {
+        "field": "observations"
+      }
+    }
+  }
+}
+
+GET sncf/_search?filter_path=**.buckets&format=yaml
+{
+  "size": 0,
+  "aggs": {
+    "par_jour": {
+      "terms": {
+        "field": "day_of_week"
+      },
+      "aggs": {
+        "moyenne_problemes": {
+          "avg": {
+            "field": "problemes"
+          }
+        },
+        "moyenne_observations": {
+          "avg": {
+            "field": "observations"
+          }
+        },
+        "conformite": {
+          "avg": {
+            "field": "taux_conformite"
+          }
+        }
+      }
+    }
+  }
+}
+
+GET sncf/_search
+{
+  "size": 0,
+  "aggs": {
+    "par_gare": {      
+      "terms": {
+        "size": 10000,
+        "field": "gare.keyword"
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
